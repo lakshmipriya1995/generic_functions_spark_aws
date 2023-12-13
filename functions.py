@@ -23,11 +23,10 @@ from pyspark.sql import Window
 from typing import List
 from pyspark.sql import DataFrame
 
-
 NAMESPACE = uuid.UUID("e4971c26-c4e7-43b7-adcd-3d714dec91cd")
 
 
-def create_year_month(df, date_column):
+def generate_year_month(df, date_column):
     """Create a year and month column from a given date column
 
     :param PySpark DataFrame df: Source DataFrame
@@ -46,7 +45,7 @@ def create_year_month(df, date_column):
     return df
 
 
-def aggregate_duplicates_rows(
+def aggregate_duplicate_rows(
         df,
         aggregate_fields,
 ):
@@ -56,7 +55,7 @@ def aggregate_duplicates_rows(
     Parameters
     ----------
     df : Spark Data Frame to be aggregated
-    aggretagte_fields : List of fields and aggregate method
+    aggregate_fields : List of fields and aggregate method
     """
 
     columns_list = df.columns
@@ -74,27 +73,27 @@ def aggregate_duplicates_rows(
     return df_aggregate
 
 
-def filter_data_on_zero_and_negative_values(df, zero_negative_values_filters):
-    """Filter the DataFrame using the configured zero and negative filter values
+def filter_data_on_non_zero_and_positive_values(df, non_zero_positive_values_filters):
+    """Filter the DataFrame using the configured non-zero and positive filter values
 
     :param DataFrame df: Input DataFrame to be filtered
-    :param Dict zero_negative_values_filters: list of columns that need to be filtered on
+    :param Dict non_zero_positive_values_filters: list of columns that need to be filtered on
     :return DataFrame: Filtered DataFrame
     """
-    for field in zero_negative_values_filters:
+    for field in non_zero_positive_values_filters:
         df = df.filter(col(field) > 0)
 
     return df
 
 
-def filter_data_on_zero_values(df, zero_values_filters):
-    """Filter the DataFrame using the configured zero filter values
+def filter_data_on_non_zero_values(df, non_zero_values_filters):
+    """Filter the DataFrame using the configured non-zero filter values
 
     :param DataFrame df: Input DataFrame to be filtered
-    :param Dict zero_values_filters: list of columns that need to be filtered on
+    :param Dict non_zero_values_filters: list of columns that need to be filtered on
     :return DataFrame: Filtered DataFrame
     """
-    for field in zero_values_filters:
+    for field in non_zero_values_filters:
         df = df.filter(col(field) != 0)
 
     return df
@@ -289,7 +288,7 @@ def _range_to_avg_perc(perc_col, range_char):
     return value
 
 
-def overwrite_faulty_dates(df_spark, date_columns):
+def handle_faulty_dates(df_spark, date_columns):
     """Take a Spark DataFrame and set dates before 1900-01-01 to be 1900-01-01.
     This function helps overcome an issue faced when upgrading to Spark 3.0
     where (wrongly entered) ancient dates could not be read and resulted
@@ -307,6 +306,8 @@ def overwrite_faulty_dates(df_spark, date_columns):
             ).otherwise(to_date(lit("1900-01-01"), "yyyy-MM-dd")),
         )
     return df_spark
+
+
 
 
 def trim_str_cols_spark_df(df_spark_in):

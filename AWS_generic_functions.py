@@ -6,10 +6,7 @@ from io import BytesIO
 import zipfile
 from dateutil.relativedelta import relativedelta
 
-
-
-
-def get_secret_as_dict(secret_id, base64_encoded=False):
+def retrieve_secret_as_dict(secret_id, base64_encoded=False):
     """Retrieve a secret from AWS Secrets Manager by the secret_id.
     :param str secret_id: SecretId of the secret within AWS Secrets Manager
     :param bool base64_encoded: Boolean value indicating if the secret is base64 encoded.
@@ -152,52 +149,7 @@ def copy_file(bucket_name_from, bucket_name_to, table_name, last_modified_date, 
     )
 
 
-def copy_file_csv(
-    bucket_name_from,
-    bucket_name_to,
-    table_name,
-    prefix_to,
-    synced_workflow,
-    region,
-    prefix_table_to=None,
-):
-    """
-    Copy file from a S3 bucket to another
 
-    Parameters
-    ----------
-    bucket_name_from : Source bucket
-    bucket_name_to : Destination bucket
-    file_name : file name
-    prefix_to: prefix to use when copying the file
-    prefix_table_to: prefix to use in the table name in target bucket
-    """
-    # Load name of source file in Landing zone from config. The data in de Landing zone has a prefix
-    # with equal name as the source_key to make the data queriable with Athena. Hence, the
-    # prefix_from is equal to the source_key:
-
-    if synced_workflow:
-        mapped_table_name = load_item_from_config_file(
-            "configurations.config", "mapping_tables", table_name
-        )
-        source_key = f"{table_name[:-4]}_{region}.csv"
-        prefix_from = f"{region}/{mapped_table_name}"
-
-    else:
-        source_key = load_item_from_config_file("configurations.config", "source_files", table_name)
-        prefix_from = f"{region}/{source_key}"
-
-    s3 = boto3.resource("s3")
-    copy_source = {"Bucket": f"{bucket_name_from}", "Key": f"{prefix_from}/{source_key}"}
-
-    bucket = s3.Bucket(bucket_name_to)
-
-    if prefix_table_to:
-        copy_target = f"{prefix_to}/{prefix_table_to}_{table_name[:-4]}.csv/{table_name[:-4]}"
-    else:
-        copy_target = f"{prefix_to}/{table_name[:-4]}.csv/{table_name[:-4]}"
-
-    bucket.copy(copy_source, f"{copy_target}_{region}.csv")
 
 
 def copy_file_parquet(
@@ -324,62 +276,3 @@ def create_file_in_s3(s3_client, bucket, prefix, fname):
     :param str fname: Name of file to create in s3
     """
     s3_client.put_object(Bucket=bucket, Key=f"{prefix}/{fname}")
-
-
-def compare_modified_date_source_with_s3(
-    s3_client, bucket_name, table, last_modified_source, location_table, source, log
-):
-    """Retrieve modified date of the table in S3 and compare it to modified date
-    of the same table in the source . If they do not match, append it to the list
-    of different modified dates
-    :param botocore.client.S3 s3_client : Botocore S3 client to communicate with S3
-    :param str bucket_name : Name of the S3 bucket in which the file is located
-    :param str table : Name of the table that should be compared
-    :param datetime last_modified_source : last modified date of the file in the source
-    (sftp, s3, dashDB)
-    :param str location_table : name of the directory in which the table is located
-    (APAC, EMEA, GLOBAL)
-    :param str source: source of the file 
-    :param logging.Logger log: logger to use to log the messages
-    :return bool : True if modified dates are the same, else False
-    """
-    today = datetime.now()
-    tnow_minus_24h = today - timedelta(hours=24)
-
-    try:
-        # Get the file name corresponding to the currently evaluated table
-        # For most files file_name is equal to the table name, but not for GBW_US_ORDERS
-        # because it is a parquet file
-        response = s3_client.list_objects_v2(
-            Bucket=f"{bucket_name}", Prefix=f"{location_table}/{table}/", Delimiter="/"
-        )
-        file_name = response["Contents"][0]["Key"].split("/")[-1]
-
-        response_s3 = s3_client.head_object(
-            Bucket=bucket_name, Key=f"{location_table}/{table}/{file_name}"
-        )
-        last_modified_s3_str = response_s3["Metadata"]["lastmodifiedtime"]
-        last_modified_s3 = datetime.strptime(last_modified_s3_str, "%Y-%m-%d %H:%M:%S")
-        log.info(
-            f"Modify times {table}: {source} - {last_modified_source}, S3 - {last_modified_s3}"
-        )
-
-        if last_modified_source == last_modified_s3:
-            log.info(f"Table {table} is up to date in S3")
-            return True
-        elif last_modified_source > tnow_minus_24h and last_modified_source < today:
-            log.info(f"Table {table} needs to be updated in S3")
-            return False
-        else:
-            log.info(f"Table {table} is outdated in S3 but waiting today's update")
-            return True
-    except KeyError:
-        log.info(f"Modify times {table}: {source} - {last_modified_source}")
-        if last_modified_source > tnow_minus_24h and last_modified_source < today:
-            log.info(
-                f"Table {table} not located in the S3 bucket. Landing job needs to be started."
-            )
-            return False
-        else:
-            log.info(f"Table {table} not located in the S3 bucket. Waiting for today's update.")
-            return True
